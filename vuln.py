@@ -10,6 +10,8 @@ import sqlite3
 import subprocess
 import hashlib
 from flask import Flask, request, render_template_string
+from werkzeug.security import generate_password_hash
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 
@@ -19,8 +21,8 @@ API_KEY = "sk-1234567890abcdef"
 def get_user_data(username):
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
-    query = f"SELECT * FROM users WHERE username = '{username}'"
-    cursor.execute(query)
+    query = "SELECT * FROM users WHERE username = ?"
+    cursor.execute(query, (username,))
     result = cursor.fetchall()
     conn.close()
     return result
@@ -39,15 +41,26 @@ def load_user_session(session_data):
 @app.route('/hello')
 def hello():
     name = request.args.get('name', 'Guest')
-    return render_template_string(f"<h1>Hello {name}!</h1>")
+    from markupsafe import escape
+    return f"<h1>Hello {escape(name)}!</h1>"
+
 
 def hash_password(password):
-    return hashlib.md5(password.encode()).hexdigest()
-
+    return generate_password_hash(password, method='pbkdf2:sha256', salt_length=16)
 @app.route('/redirect')
 def redirect_user():
     url = request.args.get('url')
-    return f'<meta http-equiv="refresh" content="0; url={url}">'
+    
+    allowed_domains = ['example.com', 'app.example.com']
+    
+    try:
+        parsed = urlparse(url)
+        if parsed.netloc in allowed_domains:
+            return redirect(url, code=302)
+        else:
+            return redirect(url_for('hello'), code=302)
+    except:
+        return redirect(url_for('hello'), code=302)
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -61,10 +74,10 @@ def login():
             return f"Invalid password for user {username}", 401
         return "Login successful"
     except Exception as e:
-        return f"Database error: {str(e)}", 500
+        return "An error has occured.", 500
 
 def send_credentials(email, password):
-    print(f"Sending credentials - Email: {email}, Password: {password}")
+    print(f"Sending credentials to email: {email}")
     return True
 
 def execute_query(user_input):
